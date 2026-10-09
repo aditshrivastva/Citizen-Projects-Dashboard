@@ -34,6 +34,18 @@ export async function POST(request: Request) {
     const value = body[key];
     return typeof value === "string" && value.trim() ? value.trim() : null;
   };
+  const fullName = context.user.user_metadata?.full_name ?? context.user.user_metadata?.name ?? context.user.email?.split("@")[0] ?? null;
+  const { error: profileError } = await context.adminClient.from("profiles").upsert({
+    id: context.user.id,
+    full_name: typeof fullName === "string" ? fullName : null,
+    company_name: typeof context.user.user_metadata?.company_name === "string" ? context.user.user_metadata.company_name : null,
+    role: "ADMIN",
+    is_active: true,
+  }, { onConflict: "id", ignoreDuplicates: true });
+  if (profileError) {
+    return Response.json({ error: `Could not create the admin profile required for project ownership: ${profileError.message}`, code: profileError.code }, { status: 400 });
+  }
+
   const { data, error } = await context.adminClient.from("projects").insert({
     project_code: projectCode,
     project_name: projectName,
