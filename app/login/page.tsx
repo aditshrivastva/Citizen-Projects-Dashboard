@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -205,20 +204,6 @@ export default function LoginPage() {
             </button>
 
           </form>
-
-          {/* Development Link */}
-          <div className="mt-6 border-t border-slate-200 pt-5 text-center">
-            <p className="text-xs text-slate-500">
-              Development mode
-            </p>
-
-            <Link
-              href="/dashboard"
-              className="mt-2 inline-block text-sm font-semibold text-green-700 hover:text-green-800"
-            >
-              Go directly to Dashboard →
-            </Link>
-          </div>
 
           {/* Footer */}
           <div className="mt-6 border-t border-slate-200 pt-5 text-center">
