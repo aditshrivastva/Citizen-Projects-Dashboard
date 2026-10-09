@@ -67,32 +67,54 @@ export default function NewProjectPage() {
         return;
       }
 
-      const { error: insertError } = await supabase.from("projects").insert({
-        project_code: form.project_code.trim(),
-        project_name: form.project_name.trim(),
-        client_name: form.client_name.trim() || null,
-        client_company: form.client_company.trim() || null,
-        site_address: form.site_address.trim() || null,
-        start_date: form.start_date || null,
-        expected_end_date: form.expected_end_date || null,
-        status: form.status,
-        progress_percentage: Number(form.progress_percentage),
-        description: form.description.trim() || null,
-        created_by: user.id,
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError("Your session has expired. Please login again.");
+        return;
+      }
 
-      if (insertError) {
-        throw insertError;
+      const response = await fetch("/api/admin/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          project_code: form.project_code.trim(),
+          project_name: form.project_name.trim(),
+          client_name: form.client_name.trim() || null,
+          client_company: form.client_company.trim() || null,
+          site_address: form.site_address.trim() || null,
+          start_date: form.start_date || null,
+          expected_end_date: form.expected_end_date || null,
+          status: form.status,
+          progress_percentage: Number(form.progress_percentage),
+          description: form.description.trim() || null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        const message = [result.error, result.details, result.hint, result.code]
+          .filter((part): part is string => typeof part === "string" && part.length > 0)
+          .join(" ");
+        throw new Error(message || "Unable to create project.");
       }
 
       router.push("/dashboard");
     } catch (err: unknown) {
-      console.error(err);
+      console.error("Project creation failed:", err);
+      const errorDetails = typeof err === "object" && err !== null
+        ? err as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown }
+        : null;
+      const errorMessage = typeof errorDetails?.message === "string"
+        ? [errorDetails.message, errorDetails.details, errorDetails.hint]
+          .filter((part): part is string => typeof part === "string" && part.length > 0)
+          .join(" ")
+        : err instanceof Error ? err.message : "Unable to create project. Please try again.";
 
-      setError(
-        (err instanceof Error && err.message) ||
-          "Unable to create project. Please try again."
-      );
+      setError(errorDetails?.code && typeof errorDetails.code === "string"
+        ? `${errorMessage} (code: ${errorDetails.code})`
+        : errorMessage);
     } finally {
       setLoading(false);
     }
