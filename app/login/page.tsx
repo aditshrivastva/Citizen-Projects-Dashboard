@@ -92,7 +92,7 @@ export default function LoginPage() {
               className="mx-auto mb-1 mt-14 h-10 w-auto object-contain"
             />
           </a>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm font-medium text-white drop-shadow-sm">
             Project & Site Management Portal
           </p>
         </div>
