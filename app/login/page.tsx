@@ -74,14 +74,22 @@ export default function LoginPage() {
 
         {/* Header */}
         <div className="mb-8 text-center">
-          <Image
-            src="/logo.png"
-            alt="Citizen"
-            width={220}
-            height={30}
-            priority
-            className="mx-auto mb-1 mt-14 h-10 w-auto object-contain"
-          />
+          <a
+            href="https://www.citizenprojects.in"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Visit Citizen Projects website"
+            className="inline-block rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green-700"
+          >
+            <Image
+              src="/logo.png"
+              alt="Citizen Projects"
+              width={220}
+              height={30}
+              priority
+              className="mx-auto mb-1 mt-14 h-10 w-auto object-contain"
+            />
+          </a>
           <p className="mt-1 text-sm text-slate-500">
             Project & Site Management Portal
           </p>
