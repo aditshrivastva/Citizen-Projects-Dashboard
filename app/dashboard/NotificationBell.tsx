@@ -36,6 +36,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [deletingNoticeId, setDeletingNoticeId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -142,11 +143,31 @@ export default function NotificationBell() {
     if (!supabase || clearing || notices.length === 0) return;
     setClearing(true);
     setError("");
-    const { error: deleteError } = await supabase.from("app_notifications").delete()
-      .in("id", notices.map((notice) => notice.id));
-    if (deleteError) setError(deleteError.message);
-    else setNotices([]);
-    setClearing(false);
+    try {
+      const { error: deleteError } = await supabase.from("app_notifications").delete()
+        .in("id", notices.map((notice) => notice.id));
+      if (deleteError) throw deleteError;
+      setNotices([]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to clear notifications.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const deleteNotification = async (noticeId: string) => {
+    if (!supabase || clearing || deletingNoticeId) return;
+    setDeletingNoticeId(noticeId);
+    setError("");
+    try {
+      const { error: deleteError } = await supabase.from("app_notifications").delete().eq("id", noticeId);
+      if (deleteError) throw deleteError;
+      setNotices((current) => current.filter((notice) => notice.id !== noticeId));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to delete this notification.");
+    } finally {
+      setDeletingNoticeId(null);
+    }
   };
 
   const unreadCount = notices.filter((notice) => !notice.read_at).length + reminders.length;
@@ -162,9 +183,12 @@ export default function NotificationBell() {
     </button>
 
     {open && <section aria-label="Notifications" className="absolute right-0 z-[60] mt-2 max-h-[min(75vh,38rem)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
-      <div className="sticky top-0 border-b border-slate-200 bg-white px-4 py-3">
-        <h2 className="font-semibold text-slate-900">Notifications</h2>
+      <div className="sticky top-0 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+        <div>
+          <h2 className="font-semibold text-slate-900">Notifications</h2>
           <p className="text-xs text-slate-500">Project deadlines, bill reminders and account updates</p>
+        </div>
+        {notices.length > 0 && <button type="button" disabled={clearing || deletingNoticeId !== null} onClick={() => void clearNotifications()} className="shrink-0 text-xs font-semibold text-red-700 hover:underline disabled:opacity-60">{clearing ? "Clearing…" : "Clear notifications"}</button>}
       </div>
       {error && <p role="alert" className="p-4 text-sm text-red-700">{error}</p>}
       {loading ? <p className="p-5 text-sm text-slate-500">Loading notifications…</p> : <>
@@ -176,15 +200,17 @@ export default function NotificationBell() {
           </Link>)}
         </div>}
         <div className="p-3">
-          <div className="flex items-center justify-between px-2 pb-1">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Recent updates</p>
-            {notices.length > 0 && <button type="button" disabled={clearing} onClick={() => void clearNotifications()} className="text-xs font-semibold text-red-700 hover:underline disabled:opacity-60">{clearing ? "Clearing…" : "Clear updates"}</button>}
-          </div>
-          {notices.length === 0 ? <p className="px-2 py-3 text-sm text-slate-500">No recent updates.</p> : notices.map((notice) => <Link key={notice.id} href={notice.href} onClick={(event) => { void openNotice(event, notice); }} className={`mb-1 block rounded-xl px-3 py-2.5 hover:bg-slate-50 ${notice.read_at ? "" : "bg-green-50/70"}`}>
-            <p className="text-sm font-semibold text-slate-900">{notice.title}</p>
-            <p className="mt-0.5 text-xs text-slate-600">{notice.message}</p>
-            <time className="mt-1 block text-[11px] text-slate-400" dateTime={notice.created_at}>{new Date(notice.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</time>
-          </Link>)}
+          <p className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Recent updates</p>
+          {notices.length === 0 ? <p className="px-2 py-3 text-sm text-slate-500">No recent updates.</p> : notices.map((notice) => <div key={notice.id} className={`mb-1 flex items-start gap-2 rounded-xl px-3 py-2.5 hover:bg-slate-50 ${notice.read_at ? "" : "bg-green-50/70"}`}>
+            <Link href={notice.href} onClick={(event) => { void openNotice(event, notice); }} className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-900">{notice.title}</p>
+              <p className="mt-0.5 text-xs text-slate-600">{notice.message}</p>
+              <time className="mt-1 block text-[11px] text-slate-400" dateTime={notice.created_at}>{new Date(notice.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</time>
+            </Link>
+            <button type="button" aria-label={`Delete notification: ${notice.title}`} title="Delete notification" disabled={clearing || deletingNoticeId !== null} onClick={() => void deleteNotification(notice.id)} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
+              {deletingNoticeId === notice.id ? <span className="text-xs">…</span> : <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4"><path fillRule="evenodd" d="M8.5 2a1 1 0 0 0-.894.553L7.382 3H4.5a.75.75 0 0 0 0 1.5h.29l.69 10.35A2.25 2.25 0 0 0 7.726 17h4.548a2.25 2.25 0 0 0 2.246-2.15l.69-10.35h.29a.75.75 0 0 0 0-1.5h-2.882l-.224-.447A1 1 0 0 0 11.5 2h-3Zm-.96 2.5h4.92l-.18-.36a.25.25 0 0 0-.224-.14h-4.112a.25.25 0 0 0-.224.14l-.18.36Zm.71 2a.75.75 0 0 1 .75.75v6a.75.75 0 0 1-1.5 0v-6a.75.75 0 0 1 .75-.75Zm3.5.75a.75.75 0 0 0-1.5 0v6a.75.75 0 0 0 1.5 0v-6Z" clipRule="evenodd" /></svg>}
+            </button>
+          </div>)}
         </div>
       </>}
     </section>}

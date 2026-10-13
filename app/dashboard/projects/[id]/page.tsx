@@ -290,6 +290,12 @@ export default function ProjectDetailsPage() {
       href: `/dashboard/projects/${projectId}/labour`,
     },
     {
+      name: "Order Value",
+      description: "Calculate item value, freight, GST and payments received",
+      count: null,
+      href: `/dashboard/projects/${projectId}/order-value`,
+    },
+    {
       name: "Billing",
       description: "Manage bills, due dates and invoice PDFs",
       count: billingCount,
@@ -481,9 +487,9 @@ export default function ProjectDetailsPage() {
                 <h3 className="text-lg font-bold text-slate-900">
                   {module.name}
                 </h3>
-                <span className="rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-700">
+                {module.count !== null && <span className="rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-700">
                   {module.count} records
-                </span>
+                </span>}
               </div>
 
               <p className="mt-3 text-sm text-slate-500">
