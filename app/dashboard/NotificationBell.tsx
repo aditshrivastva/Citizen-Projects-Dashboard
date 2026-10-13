@@ -27,6 +27,7 @@ const dateOnly = (value: string) => new Date(`${value}T00:00:00`);
 const prettyDate = (value: string) => dateOnly(value).toLocaleDateString("en-IN", {
   day: "2-digit", month: "short", year: "numeric",
 });
+const reminderDismissalsKey = (userId: string) => `dismissed-notification-reminders:${userId}`;
 
 export default function NotificationBell() {
   const router = useRouter();
@@ -68,7 +69,7 @@ export default function NotificationBell() {
     }
     const [noticeResult, projectsResult, billsResult] = await Promise.all([
       supabase.from("app_notifications").select("id, title, message, href, read_at, created_at")
-        .order("created_at", { ascending: false }).limit(30),
+        .order("created_at", { ascending: false }),
       supabase.from("projects").select("id, project_name, expected_end_date, status"),
       supabase.from("project_bills").select("id, project_id, bill_number, due_date, status")
         .in("status", ["pending", "overdue"]).not("due_date", "is", null),
@@ -112,7 +113,15 @@ export default function NotificationBell() {
       });
     }
 
-    setReminders(upcoming.sort((a, b) => a.date.localeCompare(b.date)));
+    let dismissedReminderIds: string[] = [];
+    try {
+      const storedDismissals = window.localStorage.getItem(reminderDismissalsKey(user.id));
+      const parsedDismissals: unknown = storedDismissals ? JSON.parse(storedDismissals) : [];
+      if (Array.isArray(parsedDismissals)) dismissedReminderIds = parsedDismissals.filter((id): id is string => typeof id === "string");
+    } catch {
+      // If local storage is unavailable, keep showing reminders rather than failing notification loading.
+    }
+    setReminders(upcoming.filter((reminder) => !dismissedReminderIds.includes(reminder.id)).sort((a, b) => a.date.localeCompare(b.date)));
     setLoading(false);
   }, []);
 
@@ -140,14 +149,30 @@ export default function NotificationBell() {
   };
 
   const clearNotifications = async () => {
-    if (!supabase || clearing || notices.length === 0) return;
+    if (!supabase || clearing || (notices.length === 0 && reminders.length === 0)) return;
     setClearing(true);
     setError("");
     try {
-      const { error: deleteError } = await supabase.from("app_notifications").delete()
-        .in("id", notices.map((notice) => notice.id));
-      if (deleteError) throw deleteError;
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error("Please sign in again.");
+      if (notices.length > 0) {
+        const deleteQuery = supabase.from("app_notifications").delete();
+        const { error: deleteError } = user.app_metadata?.role === "admin"
+          ? await deleteQuery.or(`recipient_id.eq.${user.id},recipient_role.eq.admin`)
+          : await deleteQuery.eq("recipient_id", user.id);
+        if (deleteError) throw deleteError;
+      }
+      if (reminders.length > 0) {
+        const key = reminderDismissalsKey(user.id);
+        let existing: string[] = [];
+        try {
+          const stored: unknown = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+          if (Array.isArray(stored)) existing = stored.filter((id): id is string => typeof id === "string");
+        } catch { /* Replace invalid local data with the reminders being dismissed now. */ }
+        window.localStorage.setItem(key, JSON.stringify([...new Set([...existing, ...reminders.map((reminder) => reminder.id)])]));
+      }
       setNotices([]);
+      setReminders([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to clear notifications.");
     } finally {
@@ -165,6 +190,28 @@ export default function NotificationBell() {
       setNotices((current) => current.filter((notice) => notice.id !== noticeId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete this notification.");
+    } finally {
+      setDeletingNoticeId(null);
+    }
+  };
+
+  const dismissReminder = async (reminderId: string) => {
+    if (!supabase || clearing || deletingNoticeId) return;
+    setDeletingNoticeId(reminderId);
+    setError("");
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error("Please sign in again.");
+      const key = reminderDismissalsKey(user.id);
+      let existing: string[] = [];
+      try {
+        const stored: unknown = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+        if (Array.isArray(stored)) existing = stored.filter((id): id is string => typeof id === "string");
+      } catch { /* Replace invalid local data with the reminder being dismissed now. */ }
+      window.localStorage.setItem(key, JSON.stringify([...new Set([...existing, reminderId])]));
+      setReminders((current) => current.filter((reminder) => reminder.id !== reminderId));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to dismiss this reminder.");
     } finally {
       setDeletingNoticeId(null);
     }
@@ -188,16 +235,21 @@ export default function NotificationBell() {
           <h2 className="font-semibold text-slate-900">Notifications</h2>
           <p className="text-xs text-slate-500">Project deadlines, bill reminders and account updates</p>
         </div>
-        {notices.length > 0 && <button type="button" disabled={clearing || deletingNoticeId !== null} onClick={() => void clearNotifications()} className="shrink-0 text-xs font-semibold text-red-700 hover:underline disabled:opacity-60">{clearing ? "Clearing…" : "Clear notifications"}</button>}
+        {(notices.length > 0 || reminders.length > 0) && <button type="button" disabled={clearing || deletingNoticeId !== null} onClick={() => void clearNotifications()} className="shrink-0 text-xs font-semibold text-red-700 hover:underline disabled:opacity-60">{clearing ? "Clearing…" : "Clear notifications"}</button>}
       </div>
       {error && <p role="alert" className="p-4 text-sm text-red-700">{error}</p>}
       {loading ? <p className="p-5 text-sm text-slate-500">Loading notifications…</p> : <>
         {reminders.length > 0 && <div className="border-b border-slate-100 p-3">
           <p className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Reminders</p>
-          {reminders.map((reminder) => <Link key={reminder.id} href={reminder.href} onClick={() => setOpen(false)} className="block rounded-xl px-3 py-2.5 hover:bg-amber-50">
-            <p className="text-sm font-semibold text-amber-900">{reminder.title}</p>
-            <p className="mt-0.5 text-xs text-slate-600">{reminder.message}</p>
-          </Link>)}
+          {reminders.map((reminder) => <div key={reminder.id} className="mb-1 flex items-start gap-2 rounded-xl px-3 py-2.5 hover:bg-amber-50">
+            <Link href={reminder.href} onClick={() => setOpen(false)} className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-900">{reminder.title}</p>
+              <p className="mt-0.5 text-xs text-slate-600">{reminder.message}</p>
+            </Link>
+            <button type="button" aria-label={`Dismiss reminder: ${reminder.title}`} title="Dismiss reminder" disabled={clearing || deletingNoticeId !== null} onClick={() => void dismissReminder(reminder.id)} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
+              {deletingNoticeId === reminder.id ? <span className="text-xs">…</span> : <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="size-4"><path fillRule="evenodd" d="M4.22 4.22a.75.75 0 0 1 1.06 0L10 8.94l4.72-4.72a.75.75 0 1 1 1.06 1.06L11.06 10l4.72 4.72a.75.75 0 1 1-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 1 1-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" /></svg>}
+            </button>
+          </div>)}
         </div>}
         <div className="p-3">
           <p className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Recent updates</p>
