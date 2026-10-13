@@ -92,7 +92,7 @@ export default function LoginPage() {
               className="mx-auto mb-1 mt-14 h-10 w-auto object-contain"
             />
           </a>
-          <p className="mt-1 text-sm font-medium text-white drop-shadow-sm">
+          <p className="mt-1 text-sm font-medium !text-white drop-shadow-sm">
             Project & Site Management Portal
           </p>
         </div>
@@ -208,7 +208,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-green-700 px-4 py-3 font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-lg bg-green-700 px-4 py-3 font-semibold !text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Signing in..." : `Sign in as ${accountType === "admin" ? "Admin" : "User"}`}
             </button>
