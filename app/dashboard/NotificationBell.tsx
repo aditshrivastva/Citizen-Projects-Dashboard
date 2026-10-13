@@ -157,10 +157,13 @@ export default function NotificationBell() {
       if (authError || !user) throw new Error("Please sign in again.");
       if (notices.length > 0) {
         const deleteQuery = supabase.from("app_notifications").delete();
-        const { error: deleteError } = user.app_metadata?.role === "admin"
-          ? await deleteQuery.or(`recipient_id.eq.${user.id},recipient_role.eq.admin`)
-          : await deleteQuery.eq("recipient_id", user.id);
+        const { data: deletedRows, error: deleteError } = user.app_metadata?.role === "admin"
+          ? await deleteQuery.or(`recipient_id.eq.${user.id},recipient_role.eq.admin`).select("id")
+          : await deleteQuery.eq("recipient_id", user.id).select("id");
         if (deleteError) throw deleteError;
+        if ((deletedRows?.length ?? 0) < notices.length) {
+          throw new Error(`Supabase deleted ${deletedRows?.length ?? 0} of ${notices.length} visible notifications. Check the notification DELETE policy in Supabase.`);
+        }
       }
       if (reminders.length > 0) {
         const key = reminderDismissalsKey(user.id);
@@ -185,8 +188,9 @@ export default function NotificationBell() {
     setDeletingNoticeId(noticeId);
     setError("");
     try {
-      const { error: deleteError } = await supabase.from("app_notifications").delete().eq("id", noticeId);
+      const { data: deletedRows, error: deleteError } = await supabase.from("app_notifications").delete().eq("id", noticeId).select("id");
       if (deleteError) throw deleteError;
+      if (!deletedRows?.length) throw new Error("Supabase did not delete this notification. Check the notification DELETE policy.");
       setNotices((current) => current.filter((notice) => notice.id !== noticeId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete this notification.");
